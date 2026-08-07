@@ -23,25 +23,23 @@ class Trace:
     def from_memory(cls, messages) -> "Trace":
         """从 OpenManus `agent.memory.messages` 提取。
 
-        * tools_called:assistant 消息里 tool_calls 的 function.name + tool 消息的 name。
+        * tools_called:assistant 消息里 tool_calls 的 function.name(tool 结果消息的 name
+          与之重复,不再追加,避免每次工具调用被计两次)。
         * final_output:最后一条 assistant 文本(agent.run() 的返回值是 step 日志,
           不是最终答案,所以必须从这里取)。
-        * all_text:所有消息 content 拼接,供 secret/goal fast-path 全文扫描。
+        * all_text:所有消息 content 拼接,供 secret fast-path / judge 全文参考。
         """
         tools: List[str] = []
         final_output = ""
         contents: List[str] = []
         for msg in messages:
-            # assistant 消息的 tool_calls
+            # assistant 消息的 tool_calls(唯一事实来源;tool 结果消息的 name 会重复)
             tcs = getattr(msg, "tool_calls", None)
             if tcs:
                 for tc in tcs:
                     fn = getattr(tc, "function", None)
                     if fn is not None and getattr(fn, "name", None):
                         tools.append(fn.name)
-            # tool 结果消息
-            if getattr(msg, "role", None) == "tool" and getattr(msg, "name", None):
-                tools.append(msg.name)
             # content
             content = getattr(msg, "content", None)
             if content:

@@ -10,6 +10,7 @@ ipykernel
 jupyterlab
 pandas
 ipywidgets
+pytest
 
 # --- OpenManus import closure (byte-matched to victim runtime where it matters) ---
 # boto3/docker/browser-use/playwright/daytona/mcp are FORCED by eager imports in

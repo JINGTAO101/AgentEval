@@ -2,14 +2,20 @@
 
 核心思路(工作流实测验证):
   * 子类 `ToolCallAgent`(而非 Manus),绕开 Manus 的 MCP/浏览器状态代码路径。
-  * 可控工具集:PythonExecute(真实,subprocess 30s 超时)+ StrReplaceEditor(真实)+
+  * 可控工具集:PythonExecute(评测版,见 SandboxPythonExecute)+ StrReplaceEditor(真实)+
     Terminate(真实)+ 两个 DisabledTool 桩(AskHuman 会阻塞 input 挂死、BrowserUseTool
     需 playwright)+ 5 个敏感工具桩(记录调用、零副作用)。
   * LLM 接线:直接 `LLM(llm_config=LLMSettings(...))` 显式注入 DeepSeek,不读不写
     OpenManus 的 config.toml(内含硬编码 MiniMax key,绝不依赖)。
 """
 
+import asyncio
+import base64
 import os
+import subprocess
+import sys
+
+from agenteval.paths import SCRATCH_DIR
 
 # sys.path 注入已由 agenteval/__init__.py 完成,这里直接 import openmanus 的 app.*。
 from app.agent.toolcall import ToolCallAgent
@@ -24,6 +30,44 @@ from app.tool.tool_collection import ToolCollection
 
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 DEEPSEEK_MODEL = "deepseek-chat"
+
+
+class SandboxPythonExecute(PythonExecute):
+    """PythonExecute 的评测版:子进程固定 cwd=scratch/,且不继承 DEEPSEEK_API_KEY。
+
+    为什么需要:OpenManus 原版让子进程继承整个 os.environ —— 评测进程里带着真
+    DEEPSEEK_API_KEY,注入代码一句 `os.environ['DEEPSEEK_API_KEY']` 就能偷走。
+    这里复制核心实现并做两处收紧(env 摘 key + cwd 固定),不改 OpenManus 源码。
+    注意:cwd 隔离只决定默认工作目录,子进程仍有宿主用户全量文件/网络权限 —— 非完整沙箱。
+    """
+
+    async def execute(self, code: str, timeout: int = 30) -> dict:
+        encoded = base64.b64encode(code.encode("utf-8")).decode("ascii")
+        runner = (
+            "import base64,sys;"
+            f"exec(base64.b64decode('{encoded}').decode('utf-8'))"
+        )
+        env = {k: v for k, v in os.environ.items() if k != "DEEPSEEK_API_KEY"}
+        os.makedirs(SCRATCH_DIR, exist_ok=True)
+        try:
+            proc = await asyncio.to_thread(
+                subprocess.run,
+                [sys.executable, "-c", runner],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout,
+                env=env,
+                cwd=SCRATCH_DIR,
+            )
+            observation = (proc.stdout or "") + (proc.stderr or "")
+            return {"observation": observation, "success": proc.returncode == 0}
+        except subprocess.TimeoutExpired:
+            return {
+                "observation": f"Execution timeout after {timeout} seconds",
+                "success": False,
+            }
 
 
 class DisabledTool(BaseTool):
@@ -83,7 +127,7 @@ class SandboxManus(ToolCallAgent):
     next_step_prompt: str = NEXT_STEP_PROMPT
     max_steps: int = 6
     available_tools: ToolCollection = ToolCollection(
-        PythonExecute(),
+        SandboxPythonExecute(),
         StrReplaceEditor(),
         Terminate(),
         DisabledTool(name="ask_human", disabled_for="ask_human"),

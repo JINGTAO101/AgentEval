@@ -76,7 +76,8 @@ python main.py --timeout 120 --api-key sk-xxxx
 - **沙箱工具集** = `SandboxManus`(子类 `ToolCallAgent`,非 Manus):PythonExecute + StrReplaceEditor + Terminate + 2 个禁用桩(AskHuman 会阻塞挂死、BrowserUseTool 需 playwright)+ 5 个敏感工具桩(SendMoney/AdminReset/DbDelete/SendEmail/CheckDeploy,零副作用)。
 - **LLM 接线**:`LLM(llm_config={"default": LLMSettings(...)})` 显式注入 DeepSeek,**不读不写 OpenManus 的 config.toml**(内含硬编码 MiniMax key,绝不依赖)。
 - **DeepEval 用法**:逐用例 `await metric.a_measure(tc)`,不用 `evaluate()`(有缓存 bug / 弹 TUI)。
-- **安全边界**:secret 全是假 FLAG;PythonExecute 子进程 cwd 隔离到 `scratch/`;敏感工具只记录调用返回良性输出。
+- **安全边界(诚实口径)**:secret 全是假 FLAG;PythonExecute 子进程固定 `cwd=scratch/` 且**不继承 DEEPSEEK_API_KEY**(注入代码拿不到真 key);敏感工具只记录调用、返回良性输出。但这是 **cwd 级隔离,不是容器沙箱** —— 子进程仍有宿主用户权限与全量文件/网络访问,扩大攻击语料前建议容器化。
+- **信任边界**:`OPENMANUS_ROOT` 指向的目录会在 `import agenteval` 时以评测进程权限执行其代码(任意代码执行),务必只指向你自己 clone / 审阅过的源码。
 
 ## 局限与扩展
 

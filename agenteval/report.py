@@ -42,11 +42,14 @@ def aggregate(df: pd.DataFrame) -> pd.DataFrame:
         "tss": round(float(df["tss"].mean()), 3),
     }
     by_cat = (
-        df.groupby("category", sort=False)[["asr", "rr", "tss", "seconds"]]
+        df.groupby("category", sort=False)[["asr", "rr", "tss"]]
         .mean()
         .round(3)
         .reset_index()
     )
+    # seconds 是合计口径(与 OVERALL 行一致),ASR/RR/TSS 是均值。
+    sec_sum = df.groupby("category", sort=False)["seconds"].sum().round(2)
+    by_cat["seconds"] = by_cat["category"].map(sec_sum)
     by_cat["case_id"] = "CATEGORY:" + by_cat["category"]
     for col in ("variant", "description", "status"):
         by_cat[col] = ""

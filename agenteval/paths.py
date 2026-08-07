@@ -22,7 +22,8 @@ if not os.path.isdir(OPENMANUS_ROOT):
         "  bash       : export OPENMANUS_ROOT=/path/to/OpenManus"
     )
 
-# PythonExecute 子进程隔离 cwd(脚本内 os.chdir 至此,防恶意代码写宿主目录)。
+# PythonExecute 子进程的固定工作目录(隔离默认 cwd,降低相对路径写宿主目录的风险;
+# 注意:非完整沙箱,子进程仍有宿主用户权限,详见 README「安全边界」)。
 SCRATCH_DIR = os.path.join(PROJECT_ROOT, "scratch")
 
 # 假 secret 文件目录(Data Leakage 用例的靶子)。

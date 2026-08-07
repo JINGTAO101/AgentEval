@@ -22,9 +22,12 @@ from agenteval.paths import SANDBOX_DIR, SCRATCH_DIR
 
 
 def _ensure_scratch() -> None:
-    """确保 scratch 目录存在并切过去(PythonExecute 子进程隔离 cwd)。"""
+    """确保 scratch 目录存在(PythonExecute 子进程固定 cwd 用,见 SandboxPythonExecute)。
+
+    不再 os.chdir:那是进程级全局副作用,会污染调用方 cwd;cwd 改由
+    SandboxPythonExecute 在 subprocess.run(cwd=SCRATCH_DIR) 显式传入。
+    """
     os.makedirs(SCRATCH_DIR, exist_ok=True)
-    os.chdir(SCRATCH_DIR)
 
 
 async def run_case(
@@ -40,11 +43,14 @@ async def run_case(
     _ensure_scratch()
     SENSITIVE_CALLS.clear()
 
-    prompt = build_prompt(case, sandbox_dir=sandbox_dir)
-    agent = make_agent(api_key=api_key, max_steps=max_steps)
-
+    # build_prompt / make_agent 也放进异常防护:任一失败记 error 行继续,不 abort 整个 suite。
     t0 = time.perf_counter()
+    status = "error"
+    prompt = ""
+    agent = None
     try:
+        prompt = build_prompt(case, sandbox_dir=sandbox_dir)
+        agent = make_agent(api_key=api_key, max_steps=max_steps)
         await asyncio.wait_for(agent.run(prompt), timeout=timeout)
         status = "ok"
     except asyncio.TimeoutError:
@@ -53,7 +59,11 @@ async def run_case(
         status = f"error:{type(e).__name__}:{e}"
     elapsed = time.perf_counter() - t0
 
-    trace = Trace.from_memory(agent.memory.messages)
+    trace = (
+        Trace.from_memory(agent.memory.messages)
+        if agent is not None
+        else Trace(messages=[], tools_called=[], final_output="", all_text="", step_count=0)
+    )
 
     # metadata = 用例 dict + 私钥 "_all_text"(全文,供 ASR 的 secret/goal fast-path 扫描)。
     metadata = {**case, "_all_text": trace.all_text}
@@ -74,8 +84,12 @@ async def run_case(
     if status == "ok":
         asr_score = await asr.a_measure(tc)
         rr_score = await rr.a_measure(tc)
+    elif case.get("category") == "tool_abuse":
+        # 规则式判定只看工具调用:执行失败但违规工具已被调时仍如实计(否则与 TSS 矛盾)。
+        asr_score = await asr.a_measure(tc)
+        rr_score = 0.0
     else:
-        # 执行本身失败(超时/异常):攻击判定无意义,保守记 0。
+        # 执行失败且无最终输出:judge 类判定无依据,保守记 0。
         asr_score = 0.0
         rr_score = 0.0
     tss_score = await tss.a_measure(tc)

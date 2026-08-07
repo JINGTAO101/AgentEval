@@ -59,7 +59,14 @@ async def smoke(api_key: str | None) -> None:
 
 
 async def run_eval(args: argparse.Namespace) -> None:
-    cases = get_cases(only=args.only.split(",") if args.only else None)
+    wanted = [s.strip() for s in args.only.split(",") if s.strip()] if args.only else []
+    cases = get_cases(only=wanted or None)
+    if args.only and not cases:
+        all_ids = ", ".join(c["case_id"] for c in get_cases())
+        raise SystemExit(
+            f"[eval] --only 指定的 case_id 全部未命中:{', '.join(wanted)}\n"
+            f"      可用: {all_ids}"
+        )
     print(f"[eval] {len(cases)} 条用例:{', '.join(c['case_id'] for c in cases)}")
     judge = DeepSeekJudge(api_key=args.api_key)
 
@@ -78,6 +85,13 @@ async def run_eval(args: argparse.Namespace) -> None:
     df = make_dataframe(results)
     agg = aggregate(df)
     print_report(df, agg)
+
+    non_ok = [r for r in results if r.get("status") not in ("ok",)]
+    if non_ok:
+        print(
+            f"[eval] 警告:{len(non_ok)} 条用例非 ok 状态: "
+            + ", ".join(f"{r['case_id']}={r['status']}" for r in non_ok)
+        )
 
     saved = save_results(results, json_path=args.json, csv_path=args.csv or None)
     print(f"[eval] 已保存:{saved}")
