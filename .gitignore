@@ -1,0 +1,25 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# ===== 虚拟环境 =====
+.venv/
+venv/
+
+# ===== 运行时 / 评测产物(代码会自动重建,勿提交)=====
+logs/
+results/
+scratch/
+sandbox/
+.deepeval/
+
+# ===== 环境变量 / 密钥(永不提交)=====
+.env
+.env.*
+!.env.example
+
+# ===== IDE =====
+.idea/
+.vscode/

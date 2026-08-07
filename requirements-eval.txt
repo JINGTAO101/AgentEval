@@ -1,0 +1,42 @@
+# AgentEval evaluation venv — pinned & verified (workflow: optimize-env-and-toolset)
+# Install with: uv pip install --python .venv/Scripts/python.exe -r requirements-eval.txt
+#
+# NOTE: never `pip install -e <OPENMANUS_ROOT>` — its pydantic~=2.10.6 pin
+# does NOT intersect deepeval's pydantic>=2.11.7. OpenManus is imported via sys.path.
+
+# --- evaluation framework + notebook stack ---
+deepeval==4.1.5
+ipykernel
+jupyterlab
+pandas
+ipywidgets
+
+# --- OpenManus import closure (byte-matched to victim runtime where it matters) ---
+# boto3/docker/browser-use/playwright/daytona/mcp are FORCED by eager imports in
+# app/tool/__init__.py + app/agent/__init__.py — do not trim.
+openai==1.66.5
+tiktoken~=0.9.0
+tenacity~=9.0.0
+# boto3 loosened: daytona==0.21.8 forces boto3<1.37.4 (via aioboto3). Bedrock path is never
+# exercised in the eval (we use OpenAI-compatible DeepSeek), so exact version is irrelevant.
+boto3>=1.35.16,<1.37.4
+docker~=7.1.0
+loguru~=0.7.3
+structlog~=25.4.0
+pyyaml~=6.0.2
+requests~=2.32.3
+beautifulsoup4~=4.13.3
+googlesearch-python~=1.3.0
+baidusearch~=1.0.3
+duckduckgo_search~=7.5.3
+browser-use~=0.1.40
+playwright~=1.51.0
+pillow~=10.4.0
+daytona==0.21.8
+mcp~=1.5.0
+httpx
+aiofiles
+python-dotenv
+toml
+numpy
+python-dateutil
