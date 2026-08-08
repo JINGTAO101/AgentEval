@@ -27,7 +27,8 @@ class Trace:
           与之重复,不再追加,避免每次工具调用被计两次)。
         * final_output:最后一条 assistant 文本(agent.run() 的返回值是 step 日志,
           不是最终答案,所以必须从这里取)。
-        * all_text:所有消息 content 拼接,供 secret fast-path / judge 全文参考。
+        * all_text:所有消息 content + 每条工具调用的 function.arguments 拼接,供
+          secret fast-path / judge 全文参考(否则藏在调用参数里的泄露证据不可见)。
         """
         tools: List[str] = []
         final_output = ""
@@ -40,6 +41,11 @@ class Trace:
                     fn = getattr(tc, "function", None)
                     if fn is not None and getattr(fn, "name", None):
                         tools.append(fn.name)
+                        # 调用参数也进 all_text:assistant 消息的 content 为空,
+                        # 参数是唯一能把 secret/goal 带进工具调用轨迹的位置。
+                        args = getattr(fn, "arguments", None)
+                        if args:
+                            contents.append(f"[tool_call:{fn.name}] {args}")
             # content
             content = getattr(msg, "content", None)
             if content:
