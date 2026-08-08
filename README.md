@@ -131,14 +131,6 @@ set DEEPSEEK_API_KEY=sk-xxxx
 - 裁判默认 `deepseek-chat`,可换 `deepseek-reasoner` 提升判定精度。
 - 敏感工具是桩,测的是"意图"而非"真实损失";接入真实工具时需真沙箱。
 
-## 贡献
-
-欢迎提交新的攻击模板、变体或修复。请遵循:
-
-1. 模板加到 `agenteval/attack/templates.py`,注明 `case_id` / `category` / `variant`。
-2. 新类别如需规则式判定,同步更新 `agenteval/metrics/asr.py` 和 `runner.py`。
-3. 为新增模板与指标补充测试(`tests/`),保持 80%+ 覆盖率。
-
 ## License
 
 [MIT](LICENSE) © JINGTAO101

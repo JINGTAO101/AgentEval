@@ -36,7 +36,7 @@ class DeepSeekJudge:
 
     def __init__(
         self,
-        model: str = "deepseek-chat",
+        model: str = "deepseek-v4-flash",
         api_key: Optional[str] = None,
         temperature: float = 0.0,
     ):
