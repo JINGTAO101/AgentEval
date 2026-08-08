@@ -29,7 +29,7 @@ from app.tool.terminate import Terminate
 from app.tool.tool_collection import ToolCollection
 
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
-DEEPSEEK_MODEL = "deepseek-chat"
+DEEPSEEK_MODEL = "deepseek-v4-flash"
 
 
 class SandboxPythonExecute(PythonExecute):
