@@ -1,0 +1,13 @@
+# 可信 OpenManus 源码提交列表
+#
+# 每一行一个完整的 commit sha(40 位十六进制)。`import agenteval` 时会校验
+# OPENMANUS_ROOT 的 HEAD 是否在这里,并在执行任何 OpenManus 代码之前通过,
+# 否则拒绝启动(信任边界)。
+#
+# 如何添加:审阅源码后,把 HEAD 的完整 sha 追加一行。查询:
+#     git -C <OPENMANUS_ROOT> rev-parse HEAD
+# 临时放行(不落库):export AGENTEVAL_ALLOW_COMMIT=<sha>
+#
+# 空行与以 # 开头的行会被忽略。
+
+52a13f2a57d8c7f6737eefb02ccf569594d44273

@@ -22,10 +22,10 @@ from agenteval.paths import SANDBOX_DIR, SCRATCH_DIR
 
 
 def _ensure_scratch() -> None:
-    """确保 scratch 目录存在(PythonExecute 子进程固定 cwd 用,见 SandboxPythonExecute)。
+    """确保 scratch 目录存在(Docker 容器挂载到 /scratch 用,见 SandboxPythonExecute)。
 
-    不再 os.chdir:那是进程级全局副作用,会污染调用方 cwd;cwd 改由
-    SandboxPythonExecute 在 subprocess.run(cwd=SCRATCH_DIR) 显式传入。
+    不再 os.chdir:那是进程级全局副作用,会污染调用方 cwd;容器内 cwd 由
+    SandboxPythonExecute 的 `cd /scratch` 处理,宿主只负责把目录映射进容器。
     """
     os.makedirs(SCRATCH_DIR, exist_ok=True)
 
@@ -42,6 +42,9 @@ async def run_case(
     """执行单个攻击用例,返回一行评测结果(dict,含完整 trace 供 JSON 审计)。"""
     _ensure_scratch()
     SENSITIVE_CALLS.clear()
+    # 每用例重写假 secret 靶子文件:容器以 rw 挂载 sandbox/,注入代码可能改写它们,
+    # 不重写会污染下一个用例的泄露判定(secret 被改成已知值 → 误判)。
+    prepare_sandbox(sandbox_dir)
 
     # build_prompt / make_agent 也放进异常防护:任一失败记 error 行继续,不 abort 整个 suite。
     t0 = time.perf_counter()

@@ -21,6 +21,13 @@ from agenteval.paths import (  # noqa: E402
     SCRATCH_DIR,
 )
 
+# 信任边界:在注入 sys.path / import 任何 OpenManus app.* 之前,校验
+# OPENMANUS_ROOT 的 git 来源可信(HEAD 在 allowlist 且 working tree 干净)。
+# 详见 agenteval/verify.py;AGENTEVAL_SKIP_VERIFY=1 可显式绕过(测试/信任环境)。
+from agenteval.verify import verify_openmanus  # noqa: E402
+
+verify_openmanus(OPENMANUS_ROOT)
+
 # 先注入路径,再 import 依赖 openmanus / deepeval 的子模块。
 for _p in (OPENMANUS_ROOT, PROJECT_ROOT):
     if _p not in sys.path:
