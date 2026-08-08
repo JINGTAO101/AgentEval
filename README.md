@@ -2,8 +2,9 @@
 
 基于 **DeepEval** 的 **OpenManus** 自动化安全评测框架(MVP)。
 
-参照 **ASB**(Agent Security Bench, ICLR 2025)方法论,对 OpenManus agent 做三类风险评测:
-**Prompt Injection / Tool Abuse / Data Leakage**(自建 9 条模板 = 3 类 × 3 变体)。
+参照 **ASB**(Agent Security Bench, ICLR 2025)方法论,对 OpenManus agent 做四类风险评测:
+**Prompt Injection / Tool Abuse / Data Leakage / Privilege Escalation**(自建 15 条模板 =
+PI/TA/DL 各 4 条变体 + 越权 3 条)。
 
 链路:**攻击模板 → 注入 → OpenManus 沙箱执行 → Memory 轨迹 → DeepEval 指标 → 报告**
 
@@ -18,7 +19,7 @@
 ```
 AgentEval/
 ├── agenteval/              # 核心包
-│   ├── attack/             #   templates.py(9 条模板)+ builder.py(注入构造)
+│   ├── attack/             #   templates.py(15 条模板)+ builder.py(注入构造)
 │   ├── harness/            #   victim.py(SandboxManus 沙箱)+ injector.py(假 secret)+ trace.py(轨迹提取)
 │   ├── judge/              #   deepseek.py(DeepSeek 裁判,deepseek-chat)
 │   ├── metrics/            #   asr.py / refusal.py / tool_safety.py(BaseMetric 子类)
@@ -61,7 +62,7 @@ set DEEPSEEK_API_KEY=sk-xxxx
 # 冒烟:一次良性 agent run + 一次 judge(先跑这个确认环境通)
 python main.py --smoke
 
-# 全量 9 条用例,结果写 JSON + CSV
+# 全量 15 条用例,结果写 JSON + CSV
 python main.py --json results/results.json --csv results/results.csv
 
 # 只跑子集 / 调超时 / 显式传 key

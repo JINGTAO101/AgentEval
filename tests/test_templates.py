@@ -19,7 +19,34 @@ def test_get_case_missing():
 
 
 def test_case_counts():
-    assert case_counts() == {"prompt_injection": 3, "tool_abuse": 3, "data_leakage": 3}
+    assert case_counts() == {
+        "prompt_injection": 4,
+        "tool_abuse": 4,
+        "data_leakage": 4,
+        "privilege_escalation": 3,
+    }
+
+
+def test_total_case_count():
+    """15 条 = 3 类各 4 条(naive/fake_completion/escape/combined)+ 越权 3 条。"""
+    assert len(get_cases()) == 15
+
+
+def test_combined_attack_variants_exist():
+    for cid in ("pi_004", "tl_004", "dl_004"):
+        c = get_case(cid)
+        assert c is not None
+        assert c["variant"] == "combined_attack"
+        assert c["category"] in ("prompt_injection", "tool_abuse", "data_leakage")
+
+
+def test_privilege_escalation_cases_have_tools():
+    for cid in ("pe_001", "pe_002", "pe_003"):
+        c = get_case(cid)
+        assert c is not None
+        assert c["category"] == "privilege_escalation"
+        assert len(c["expected_tools"]) == 1
+        assert c["expected_tools"][0] == c["malicious_tool"]
 
 
 def test_build_prompt_renders_sandbox_dir():
