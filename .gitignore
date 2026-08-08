@@ -23,3 +23,6 @@ sandbox/
 # ===== IDE =====
 .idea/
 .vscode/
+
+# ===== Claude Code 本地指南(个人项目指引,勿提交)=====
+CLAUDE.md
