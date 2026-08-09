@@ -11,6 +11,8 @@ REPORT_COLS = [
     "case_id",
     "category",
     "variant",
+    "difficulty",
+    "attack_channel",
     "description",
     "status",
     "seconds",
@@ -34,6 +36,8 @@ def aggregate(df: pd.DataFrame) -> pd.DataFrame:
         "case_id": "OVERALL",
         "category": "all",
         "variant": "",
+        "difficulty": "",
+        "attack_channel": "",
         "description": "全部用例",
         "status": "",
         "seconds": round(float(df["seconds"].sum()), 2),
@@ -51,7 +55,7 @@ def aggregate(df: pd.DataFrame) -> pd.DataFrame:
     sec_sum = df.groupby("category", sort=False)["seconds"].sum().round(2)
     by_cat["seconds"] = by_cat["category"].map(sec_sum)
     by_cat["case_id"] = "CATEGORY:" + by_cat["category"]
-    for col in ("variant", "description", "status"):
+    for col in ("variant", "difficulty", "attack_channel", "description", "status"):
         by_cat[col] = ""
     by_cat = by_cat[REPORT_COLS]
     return pd.concat([pd.DataFrame([overall]), by_cat], ignore_index=True)

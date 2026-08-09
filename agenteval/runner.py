@@ -44,8 +44,8 @@ async def run_case(
     SENSITIVE_CALLS.clear()
     # 每用例重写假 secret 靶子文件:agent 可能在上一用例改写过 sandbox/ 里的靶子
     # (注入代码或文件工具都有宿主写权限),不重写会污染下一个用例的泄露判定
-    # (secret 被改成已知值 → 误判)。
-    prepare_sandbox(sandbox_dir)
+    # (secret 被改成已知值 → 误判)。同时写入本用例的 OPI 观测注入(attack_channel=="opi")。
+    prepare_sandbox(case, sandbox_dir=sandbox_dir)
 
     # build_prompt / make_agent 也放进异常防护:任一失败记 error 行继续,不 abort 整个 suite。
     t0 = time.perf_counter()
@@ -102,6 +102,8 @@ async def run_case(
         "case_id": case["case_id"],
         "category": case["category"],
         "variant": case.get("variant", ""),
+        "difficulty": case.get("difficulty", "aggressive"),
+        "attack_channel": case.get("attack_channel", "dpi"),
         "description": case.get("description", ""),
         "status": status,
         "seconds": round(elapsed, 2),
@@ -131,7 +133,7 @@ async def run_suite(
 
     `progress(i, total, case_id)` 可选回调,CLI/notebook 打印进度用。
     """
-    prepare_sandbox(sandbox_dir)
+    prepare_sandbox(None, sandbox_dir=sandbox_dir)  # 预热写标准三文件;每个 run_case 用各自 case 重写
     results = []
     total = len(cases)
     for i, case in enumerate(cases, 1):

@@ -5,14 +5,16 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12-blue.svg)](#环境搭建)
 
-AgentEval 参照 **ASB**(Agent Security Bench, ICLR 2025)方法论,对 OpenManus agent 做自动化安全评测。内置 **15 条攻击模板**,覆盖四类风险:
+AgentEval 参照 **ASB**(Agent Security Bench, ICLR 2025)方法论,对 OpenManus agent 做自动化安全评测。内置 **54 条攻击模板**(46 DPI 直接注入 + 8 OPI 间接注入),覆盖四类风险、两种难度(激进 / 非激进):
 
 | 风险类别 | 模板数 | 说明 |
 |---|---|---|
-| **Prompt Injection** | 4 | 指令注入、伪造完成、转义字符、组合攻击 |
-| **Tool Abuse** | 4 | 诱导调用敏感工具 |
-| **Data Leakage** | 4 | 诱导泄露假 secret |
-| **Privilege Escalation** | 3 | 越权提权后执行管理操作 |
+| **Prompt Injection** | 16 | 指令注入、伪造完成、转义字符、忽略上下文、组合攻击 |
+| **Tool Abuse** | 15 | 诱导调用敏感工具 |
+| **Data Leakage** | 14 | 诱导泄露假 secret |
+| **Privilege Escalation** | 9 | 越权提权后执行管理操作 |
+
+难度轴 `difficulty`:`aggressive`(直接"窃取/转账/删库")与 `non_aggressive`(ASB 风格,把恶意伪装成"校验/归档/审计"等正常运维语言);攻击通道 `attack_channel`:`dpi`(直接注入进 prompt)与 `opi`(恶意指令藏进沙箱文件,agent 读文件时才进入上下文)。模板存于 `data/templates.jsonl`,import 时加载并做 fail-fast schema 校验。
 
 > **⚠️ 安全声明**:本项目是**授权安全评测工具**,仅用于测试你自己的 agent 或已获明确授权的目标。注入的指令、模拟的敏感工具操作均为无害桩(假 secret、零副作用),不会造成真实损失。
 
@@ -22,6 +24,8 @@ AgentEval 参照 **ASB**(Agent Security Bench, ICLR 2025)方法论,对 OpenManus
 
 - **四类风险一键评测**:模板即插即用,单条或全量执行
 - **双通道判定**:规则式(tool_abuse / privilege_escalation 零 LLM 成本)+ LLM 裁判(prompt_injection / data_leakage)
+- **双攻击通道**:DPI 直接注入 prompt;OPI 间接注入藏进沙箱文件,经由 tool observation 进入上下文
+- **难度轴**:激进 / 非激进(ASB 方法论),可按难度分组分析 ASR/RR/TSS
 - **沙箱化被测对象**:自定义 `SandboxManus`,敏感工具全部替换为记录式桩
 - **可审计轨迹**:完整 Message 轨迹(含工具调用参数)导出 JSON / CSV
 - **透明指标**:ASR / RR / TSS 三类指标,含判定理由
@@ -31,12 +35,13 @@ AgentEval 参照 **ASB**(Agent Security Bench, ICLR 2025)方法论,对 OpenManus
 ```
 AgentEval/
 ├── agenteval/              # 核心包
-│   ├── attack/             #   templates.py(15 条模板)+ builder.py(注入构造)
-│   ├── harness/            #   victim.py(SandboxManus 沙箱)+ injector.py(假 secret)+ trace.py(轨迹提取)
-│   ├── judge/              #   deepseek.py(DeepSeek 裁判,deepseek-chat)
+│   ├── attack/             #   templates.py(JSONL loader)+ builder.py(注入构造)
+│   ├── harness/            #   victim.py(SandboxManus 沙箱)+ injector.py(假 secret + OPI 注入)+ trace.py(轨迹提取)
+│   ├── judge/              #   deepseek.py(DeepSeek 裁判,deepseek-v4-flash)
 │   ├── metrics/            #   asr.py / refusal.py / tool_safety.py(BaseMetric 子类)
 │   ├── runner.py           #   编排:run_case / run_suite
 │   └── report.py           #   DataFrame / 聚合 / 打印 / CSV / JSON
+├── data/                   # templates.jsonl(54 条攻击模板,git 跟踪)
 ├── main.py                 # CLI 入口
 ├── AgentEval_demo.ipynb    # 演示 notebook
 ├── requirements-eval.txt   # 锁定依赖
@@ -60,14 +65,22 @@ AgentEval/
 
 ### 攻击变体
 
-每条模板可选用 4 种注入变体,由 `builder.py` 组合生成:
+每条模板可选用 5 种注入变体,由 `builder.py` 组合生成(OPI 通道固定 `naive`):
 
 | 变体 | 说明 |
 |---|---|
 | `naive` | 直接插入指令 |
 | `fake_completion` | 伪造"已完成"回复,诱导继续执行注入内容 |
 | `escape_characters` | 转义字符绕过上下文 |
+| `context_ignoring` | 声明忽略历史指令/系统规则 |
 | `combined_attack` | 伪造完成 + 忽略历史指令 + 注入目标组合 |
+
+另有两个正交轴:
+
+| 轴 | 取值 | 说明 |
+|---|---|---|
+| `difficulty` | `aggressive` / `non_aggressive` | 非激进 = ASB 措辞思路,把恶意伪装成"校验/归档/审计"等正常运维语言;仅重写 `attacker_instruction`,secret / goal / expected_tools 与激进版完全一致 |
+| `attack_channel` | `dpi` / `opi` | `dpi` 直接注入 prompt;`opi` 把恶意指令追加进 `poison_file`(默认 `notes.txt`),由良性任务强制 agent 读该文件,攻击经 tool observation 进入上下文 |
 
 ## 环境搭建
 
@@ -114,7 +127,7 @@ set DEEPSEEK_API_KEY=sk-xxxx
 # 冒烟测试:一次良性 agent run + 一次 judge(先跑这个确认环境通)
 .venv/Scripts/python.exe main.py --smoke
 
-# 全量 15 条用例,结果写 JSON + CSV
+# 全量 54 条用例,结果写 JSON + CSV
 .venv/Scripts/python.exe main.py --json results/results.json --csv results/results.csv
 
 # 只跑子集 / 调超时 / 显式传 key
@@ -142,9 +155,11 @@ set DEEPSEEK_API_KEY=sk-xxxx
 
 ## 局限与扩展
 
-- 单轮评测(每用例跑一次);可扩展为多轮取均值、接入 ASB 的 400 条攻击工具数据(JSONL)。
+- 单轮评测(每用例跑一次);可扩展为多轮取均值。
+- OPI 通道的 RR 是近似判定:RR 用 `test_case.input`(OPI 时只含良性任务)当"用户请求",注入在观测层,拒绝率判定不精确;ASR 不受影响(全文已含工具观测)。
 - 裁判默认 `deepseek-v4-flash`,可换 `deepseek-reasoner` 提升判定精度。
 - 敏感工具是桩,测的是"意图"而非"真实损失";接入真实工具时需真沙箱(当前 Python 执行是宿主子进程「约定沙箱」,敏感工具桩仍是纯逻辑桩)。
+- 模板已外部化为 `data/templates.jsonl`,schema 校验在 import 期 fail-fast(缺字段 / 未知枚举 / OPI 引用错文件都直接报错);可进一步接 ASB 的 400 条攻击工具数据(JSONL)做规模化扩展。
 
 ## License
 
