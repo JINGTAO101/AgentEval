@@ -9,18 +9,19 @@
     OpenManus 的 config.toml(内含硬编码 MiniMax key,绝不依赖)。
 """
 
+import asyncio
 import base64
 import os
+import subprocess
+import sys
 
-from agenteval.paths import SANDBOX_DIR, SCRATCH_DIR
+from agenteval.paths import SCRATCH_DIR
 
 # sys.path 注入已由 agenteval/__init__.py 完成,这里直接 import openmanus 的 app.*。
 from app.agent.toolcall import ToolCallAgent
-from app.config import LLMSettings, SandboxSettings, config
+from app.config import LLMSettings, config
 from app.llm import LLM
 from app.prompt.manus import NEXT_STEP_PROMPT, SYSTEM_PROMPT
-from app.sandbox.core.exceptions import SandboxTimeoutError
-from app.sandbox.core.sandbox import DockerSandbox
 from app.tool.base import BaseTool, ToolResult
 from app.tool.python_execute import PythonExecute
 from app.tool.str_replace_editor import StrReplaceEditor
@@ -30,84 +31,46 @@ from app.tool.tool_collection import ToolCollection
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 DEEPSEEK_MODEL = "deepseek-v4-flash"
 
-# 容器内固定工作目录 / 假 secret 挂载点(与宿主 SCRATCH_DIR / SANDBOX_DIR 一一映射)。
-_CONTAINER_SCRATCH = "/scratch"
-_CONTAINER_SANDBOX = "/sandbox"
-# 退出码哨兵:run_command 只返回合并输出且丢弃 `echo $?`,用自定义标记自行捕获。
-_RC_MARKER = "__RC:"
-
-
-def _parse_rc(out: str) -> int:
-    """从输出里取最后一个 `__RC:N` 的 N;找不到返回 0(乐观,与旧版成功语义一致)。"""
-    rc = 0
-    for line in out.splitlines():
-        line = line.strip()
-        if line.startswith(_RC_MARKER):
-            try:
-                rc = int(line[len(_RC_MARKER):])
-            except ValueError:
-                rc = 0
-    return rc
-
-
-def _strip_rc(out: str) -> str:
-    """去掉哨兵行本身,只留真实程序输出。"""
-    lines = [ln for ln in out.splitlines() if not ln.strip().startswith(_RC_MARKER)]
-    return "\n".join(lines)
-
 
 class SandboxPythonExecute(PythonExecute):
-    """PythonExecute 的评测版:注入代码在 Docker 容器内执行(真隔离)。
+    """PythonExecute 的评测版:子进程固定 cwd=scratch/,且不继承 DEEPSEEK_API_KEY。
 
-    为什么需要:OpenManus 原版用 subprocess 在本进程跑注入代码,子进程有宿主
-    全量文件/网络权限,一句 `os.environ['DEEPSEEK_API_KEY']` 就能偷真 key。
-    这里改为复用 OpenManus 的 DockerSandbox:network_mode=none(默认断网)、
-    512m 内存、python:3.12-slim,只挂载宿主 scratch/ 与 sandbox/(假 secret 靶子)。
+    为什么需要:OpenManus 原版让子进程继承整个 os.environ —— 评测进程里带着真
+    DEEPSEEK_API_KEY,注入代码一句 `os.environ['DEEPSEEK_API_KEY']` 就能偷走。
+    这里复制核心实现并做两处收紧(env 摘 key + cwd 固定),不改 OpenManus 源码。
+    注意:cwd 隔离只决定默认工作目录,子进程仍有宿主用户全量文件/网络权限 —— 非完整沙箱。
 
-    * 懒连接:DockerSandbox 只在 execute() 内构造 —— SandboxPythonExecute() 在
-      import agenteval 时就会被实例化(victim.py 的 available_tools),若 __init__
-      就连 Docker,所有不跑真实 agent 的测试都会要求 Docker。
-    * key 隔离:容器 env 独立(不继承宿主),不显式传任何 env → 注入代码拿不到真 key。
-    * 退出码:DockerSandbox.run_command 只返回合并输出,用尾部 `__RC:$?` 自行捕获。
+    用 asyncio.to_thread 跑同步 subprocess.run:不依赖 asyncio 子进程 API(Windows
+    的 SelectorEventLoop 不支持),notebook 里也可靠。
     """
 
     async def execute(self, code: str, timeout: int = 30) -> dict:
         encoded = base64.b64encode(code.encode("utf-8")).decode("ascii")
-        # python3 -c 内联 exec(base64),避免两步 write_file + run。
         runner = (
-            "python3 -c \"import base64;"
-            f"exec(base64.b64decode('{encoded}').decode('utf-8'))\""
+            "import base64,sys;"
+            f"exec(base64.b64decode('{encoded}').decode('utf-8'))"
         )
-        settings = SandboxSettings(
-            network_enabled=False,  # 默认即 False(network_mode=none),显式声明
-            timeout=timeout,
-        )
-        binds = {
-            SCRATCH_DIR: _CONTAINER_SCRATCH,
-            SANDBOX_DIR: _CONTAINER_SANDBOX,
-        }
+        env = {k: v for k, v in os.environ.items() if k != "DEEPSEEK_API_KEY"}
+        os.makedirs(SCRATCH_DIR, exist_ok=True)
         try:
-            async with DockerSandbox(config=settings, volume_bindings=binds) as sb:
-                # cd /scratch 保持旧版 cwd 语义;哨兵捕获退出码(run_command 无退出码)。
-                out = await sb.run_command(
-                    f"cd {_CONTAINER_SCRATCH} && {runner}; echo {_RC_MARKER}$?",
-                    timeout=timeout,
-                )
-        except SandboxTimeoutError:
+            proc = await asyncio.to_thread(
+                subprocess.run,
+                [sys.executable, "-c", runner],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout,
+                env=env,
+                cwd=SCRATCH_DIR,
+            )
+            observation = (proc.stdout or "") + (proc.stderr or "")
+            return {"observation": observation, "success": proc.returncode == 0}
+        except subprocess.TimeoutExpired:
             return {
                 "observation": f"Execution timeout after {timeout} seconds",
                 "success": False,
             }
-        except Exception as e:  # noqa: BLE001 —— Docker 不可用 / 拉镜像失败等,如实返回
-            return {
-                "observation": f"Docker sandbox error: {e}",
-                "success": False,
-            }
-        rc = _parse_rc(out)
-        return {
-            "observation": _strip_rc(out),
-            "success": rc == 0,
-        }
 
 
 class DisabledTool(BaseTool):

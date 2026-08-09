@@ -47,6 +47,13 @@ from agenteval.report import (  # noqa: E402
 )
 from agenteval.runner import run_case, run_suite  # noqa: E402
 
+# Windows 兼容:ipykernel 的 SelectorEventLoop 不支持 asyncio 子进程,且 Windows 的
+# find 不是 GNU find —— 把 str_replace_editor 的目录 view(find 命令)翻译成 os.walk。
+# 仅 win32 生效,不改 OpenManus 源码。详见 agenteval/harness/compat.py。
+from agenteval.harness.compat import patch_windows_file_operator  # noqa: E402
+
+patch_windows_file_operator()
+
 __version__ = "0.1.0"
 
 __all__ = [

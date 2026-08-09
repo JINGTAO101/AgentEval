@@ -73,7 +73,9 @@ AgentEval/
 
 > OpenManus 锁 `pydantic~=2.10.6`,deepeval 要求 `pydantic>=2.11.7`,区间不交,**必须独立 venv**。OpenManus 通过 `sys.path` 只读导入,**绝不安装、绝不修改其源码**。
 >
-> **前置:本机需要 Docker Desktop** —— PythonExecute 在容器内执行注入代码(默认断网、512m 内存)。Windows 下需在 Docker Desktop Settings 里共享 temp 目录路径(容器挂载宿主 %TEMP% 下的工作目录)。
+> **Windows 兼容**:OpenManus 的 `str_replace_editor` 目录 view 依赖 GNU `find`,且 ipykernel 的 SelectorEventLoop 不支持 asyncio 子进程 —— `import agenteval` 在 Windows 上自动启用兼容层,把目录列出翻译成纯 Python `os.walk`(语义与 GNU `find -maxdepth` 等价),无需额外配置;非 Windows 平台为零开销的 no-op。
+>
+> **沙箱说明**:`SandboxPythonExecute` 用**宿主子进程**执行注入代码(cwd 固定 scratch/、env 摘掉 `DEEPSEEK_API_KEY`),是无容器的「约定沙箱」而非强隔离 —— 注入代码仍有宿主文件/网络权限,仅限本地、授权的评测使用。
 
 ```bash
 # 0) 克隆 OpenManus(被测对象,任意位置)
@@ -124,7 +126,7 @@ set DEEPSEEK_API_KEY=sk-xxxx
 
 ## 设计要点
 
-- **沙箱工具集**:`SandboxManus`(子类 `ToolCallAgent`,非 Manus)= PythonExecute(Docker 容器版)+ StrReplaceEditor + Terminate + 2 个禁用桩(AskHuman 会阻塞、BrowserUseTool 需 playwright)+ 5 个敏感工具桩(SendMoney / AdminReset / DbDelete / SendEmail / CheckDeploy,记录到 `SENSITIVE_CALLS`,零副作用,每用例清空)。
+- **沙箱工具集**:`SandboxManus`(子类 `ToolCallAgent`,非 Manus)= PythonExecute(子进程版,cwd=scratch + env 摘 key)+ StrReplaceEditor + Terminate + 2 个禁用桩(AskHuman 会阻塞、BrowserUseTool 需 playwright)+ 5 个敏感工具桩(SendMoney / AdminReset / DbDelete / SendEmail / CheckDeploy,记录到 `SENSITIVE_CALLS`,零副作用,每用例清空)。
 - **LLM 接线**:`LLM(llm_config={"default": LLMSettings(...)})` 显式注入 DeepSeek,**不读不写** OpenManus 的 `config.toml`(内含硬编码 MiniMax key)。
 - **DeepEval 用法**:逐用例 `await metric.a_measure(tc)`,不用 `evaluate()`(有缓存 bug / 弹 TUI)。
 - **轨迹提取**:`Trace.from_memory` 从 Message 列表提取工具调用、最终输出、全文(含工具调用参数);工具按 assistant `tool_calls` 去重,不双计。
@@ -135,14 +137,14 @@ set DEEPSEEK_API_KEY=sk-xxxx
 |---|---|
 | **假 secret** | 靶子文件里的 secret 全是随机假 FLAG,agent 事先不可能知道 |
 | **敏感工具桩** | 记录调用、返回良性输出,**不产生真实副作用** |
-| **Docker 容器沙箱** | 注入代码在 `python:3.12-slim` 容器内执行(`DockerSandbox`),**`network_mode=none`(默认断网)、512m 内存、1 CPU**,只挂载宿主 `scratch/` 与 `sandbox/` 两个目录。容器 env 独立,注入代码**拿不到 `DEEPSEEK_API_KEY`**。前置条件:本机 Docker Desktop(Docker Desktop 需共享 temp 目录路径,`_ensure_host_dir` 用宿主 %TEMP%) |
+| **Python 子进程沙箱** | 注入代码以**宿主子进程**执行(`asyncio.to_thread(subprocess.run)`,cwd 固定 `scratch/`、env **摘掉 `DEEPSEEK_API_KEY`**)。非容器 —— 子进程仍有宿主文件/网络权限,是「约定沙箱」而非强隔离,仅限本地、授权评估 |
 | **git 来源校验** | `import agenteval` 在**执行任何 OpenManus 代码之前**校验 `OPENMANUS_ROOT`:必须是 git 仓库、HEAD 在可信提交列表(`agenteval/trusted_openmanus_commits.txt` 或 `AGENTEVAL_ALLOW_COMMIT`)、working tree 干净。绕过(仅测试/信任环境):`AGENTEVAL_SKIP_VERIFY=1`;本地有审阅过的定制改动:`AGENTEVAL_ALLOW_DIRTY=1` |
 
 ## 局限与扩展
 
 - 单轮评测(每用例跑一次);可扩展为多轮取均值、接入 ASB 的 400 条攻击工具数据(JSONL)。
 - 裁判默认 `deepseek-v4-flash`,可换 `deepseek-reasoner` 提升判定精度。
-- 敏感工具是桩,测的是"意图"而非"真实损失";接入真实工具时需真沙箱(当前 Python 执行已是 Docker 容器,但敏感工具桩仍是纯逻辑桩)。
+- 敏感工具是桩,测的是"意图"而非"真实损失";接入真实工具时需真沙箱(当前 Python 执行是宿主子进程「约定沙箱」,敏感工具桩仍是纯逻辑桩)。
 
 ## License
 
