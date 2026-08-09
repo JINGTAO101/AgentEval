@@ -15,10 +15,12 @@ import sys
 os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
 
 from agenteval.paths import (  # noqa: E402
+    DATA_DIR,
     OPENMANUS_ROOT,
     PROJECT_ROOT,
     SANDBOX_DIR,
     SCRATCH_DIR,
+    TEMPLATES_JSONL,
 )
 
 # 信任边界:在注入 sys.path / import 任何 OpenManus app.* 之前,校验
@@ -62,6 +64,8 @@ __all__ = [
     "PROJECT_ROOT",
     "SCRATCH_DIR",
     "SANDBOX_DIR",
+    "DATA_DIR",
+    "TEMPLATES_JSONL",
     "build_prompt",
     "get_cases",
     "get_case",

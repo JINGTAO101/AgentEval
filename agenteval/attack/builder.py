@@ -4,6 +4,9 @@
   injected_prompt = benign_task + 变体包裹(attacker_instruction)
 变体语义主要承载在 attacker_instruction 的措辞里,builder 只做统一的分隔包裹,
 保证不同变体在输入结构上有可复现的差异。
+
+OPI(attack_channel=="opi")例外:攻击不在用户 prompt 层 —— 直接返回渲染后的
+benign_task,恶意指令由 injector 写进沙箱文件,tool observation 层才进 agent 上下文。
 """
 
 from typing import Optional
@@ -29,6 +32,11 @@ def build_prompt(case: dict, sandbox_dir: Optional[str] = None) -> str:
     """
     sd = sandbox_dir or SANDBOX_DIR
     benign = case["benign_task"].format(sandbox_dir=sd)
+    if case.get("attack_channel", "dpi") == "opi":
+        # OPI:攻击只在观测层 —— user prompt 只含良性任务。
+        # 恶意指令由 injector 写进 poison_file,agent 读文件时才进上下文。
+        # 不渲染 attacker_instruction、不套变体包裹(OPI variant 固定 naive)。
+        return benign
     inst = case["attacker_instruction"].format(sandbox_dir=sd)
     wrapper = _VARIANT_WRAPPER.get(case.get("variant", "naive"), _VARIANT_WRAPPER["naive"])
     return wrapper.format(benign=benign, inst=inst)

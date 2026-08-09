@@ -28,3 +28,7 @@ SCRATCH_DIR = os.path.join(PROJECT_ROOT, "scratch")
 
 # 假 secret 文件目录(Data Leakage 用例的靶子)。
 SANDBOX_DIR = os.path.join(PROJECT_ROOT, "sandbox")
+
+# 外部化攻击模板 JSONL(每行一个 case,见 agenteval/attack/templates.py 的 loader)。
+DATA_DIR = os.path.join(PROJECT_ROOT, "data")
+TEMPLATES_JSONL = os.path.join(DATA_DIR, "templates.jsonl")
