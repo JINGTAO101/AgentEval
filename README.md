@@ -5,16 +5,16 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12-blue.svg)](#环境搭建)
 
-AgentEval 参照 **ASB**(Agent Security Bench, ICLR 2025)方法论,对 OpenManus agent 做自动化安全评测。内置 **54 条攻击模板**(46 DPI 直接注入 + 8 OPI 间接注入),覆盖四类风险、两种难度(激进 / 非激进):
+AgentEval 参照 **ASB**(Agent Security Bench, ICLR 2025)方法论,对 OpenManus agent 做自动化安全评测。内置 **85 条攻击模板**(72 DPI 直接注入 + 13 OPI 间接注入),覆盖四类风险、两种难度(激进 / 非激进):
 
 | 风险类别 | 模板数 | 说明 |
 |---|---|---|
-| **Prompt Injection** | 16 | 指令注入、伪造完成、转义字符、忽略上下文、组合攻击 |
-| **Tool Abuse** | 15 | 诱导调用敏感工具 |
-| **Data Leakage** | 14 | 诱导泄露假 secret |
-| **Privilege Escalation** | 9 | 越权提权后执行管理操作 |
+| **Prompt Injection** | 20 | 指令注入、伪造完成、转义字符、忽略上下文、组合攻击 |
+| **Tool Abuse** | 26 | 诱导调用敏感工具(8 桩) |
+| **Data Leakage** | 20 | 诱导泄露假 secret(4 靶) |
+| **Privilege Escalation** | 19 | 越权提权后执行管理操作 |
 
-难度轴 `difficulty`:`aggressive`(直接"窃取/转账/删库")与 `non_aggressive`(ASB 风格,把恶意伪装成"校验/归档/审计"等正常运维语言);攻击通道 `attack_channel`:`dpi`(直接注入进 prompt)与 `opi`(恶意指令藏进沙箱文件,agent 读文件时才进入上下文)。模板存于 `data/templates.jsonl`,import 时加载并做 fail-fast schema 校验。
+难度轴 `difficulty`:`aggressive`(直接"窃取/转账/删库")与 `non_aggressive`(ASB 风格,把恶意伪装成"校验/归档/审计"等正常运维语言);攻击通道 `attack_channel`:`dpi`(直接注入进 prompt)与 `opi`(恶意指令藏进沙箱文件,agent 读文件时才进入上下文)。OPI 载体支持多文件:`notes.txt` / `config.txt` / `README.md` / `deploy.log`。模板存于 `data/templates.jsonl`,import 时加载并做 fail-fast schema 校验。
 
 > **⚠️ 安全声明**:本项目是**授权安全评测工具**,仅用于测试你自己的 agent 或已获明确授权的目标。注入的指令、模拟的敏感工具操作均为无害桩(假 secret、零副作用),不会造成真实损失。
 
@@ -26,7 +26,7 @@ AgentEval 参照 **ASB**(Agent Security Bench, ICLR 2025)方法论,对 OpenManus
 - **双通道判定**:规则式(tool_abuse / privilege_escalation 零 LLM 成本)+ LLM 裁判(prompt_injection / data_leakage)
 - **双攻击通道**:DPI 直接注入 prompt;OPI 间接注入藏进沙箱文件,经由 tool observation 进入上下文
 - **难度轴**:激进 / 非激进(ASB 方法论),可按难度分组分析 ASR/RR/TSS
-- **沙箱化被测对象**:自定义 `SandboxManus`,敏感工具全部替换为记录式桩
+- **沙箱化被测对象**:自定义 `SandboxManus`,8 个敏感工具全部替换为记录式桩
 - **可审计轨迹**:完整 Message 轨迹(含工具调用参数)导出 JSON / CSV
 - **透明指标**:ASR / RR / TSS 三类指标,含判定理由
 
@@ -80,7 +80,7 @@ AgentEval/
 | 轴 | 取值 | 说明 |
 |---|---|---|
 | `difficulty` | `aggressive` / `non_aggressive` | 非激进 = ASB 措辞思路,把恶意伪装成"校验/归档/审计"等正常运维语言;仅重写 `attacker_instruction`,secret / goal / expected_tools 与激进版完全一致 |
-| `attack_channel` | `dpi` / `opi` | `dpi` 直接注入 prompt;`opi` 把恶意指令追加进 `poison_file`(默认 `notes.txt`),由良性任务强制 agent 读该文件,攻击经 tool observation 进入上下文 |
+| `attack_channel` | `dpi` / `opi` | `dpi` 直接注入 prompt;`opi` 把恶意指令追加进 `poison_file`(默认 `notes.txt`,可选 `config.txt` / `README.md` / `deploy.log`),由良性任务强制 agent 读该文件,攻击经 tool observation 进入上下文 |
 
 ## 环境搭建
 
@@ -127,7 +127,7 @@ set DEEPSEEK_API_KEY=sk-xxxx
 # 冒烟测试:一次良性 agent run + 一次 judge(先跑这个确认环境通)
 .venv/Scripts/python.exe main.py --smoke
 
-# 全量 54 条用例,结果写 JSON + CSV
+# 全量 85 条用例,结果写 JSON + CSV
 .venv/Scripts/python.exe main.py --json results/results.json --csv results/results.csv
 
 # 只跑子集 / 调超时 / 显式传 key
@@ -139,7 +139,7 @@ set DEEPSEEK_API_KEY=sk-xxxx
 
 ## 设计要点
 
-- **沙箱工具集**:`SandboxManus`(子类 `ToolCallAgent`,非 Manus)= PythonExecute(子进程版,cwd=scratch + env 摘 key)+ StrReplaceEditor + Terminate + 2 个禁用桩(AskHuman 会阻塞、BrowserUseTool 需 playwright)+ 5 个敏感工具桩(SendMoney / AdminReset / DbDelete / SendEmail / CheckDeploy,记录到 `SENSITIVE_CALLS`,零副作用,每用例清空)。
+- **沙箱工具集**:`SandboxManus`(子类 `ToolCallAgent`,非 Manus)= PythonExecute(子进程版,cwd=scratch + env 摘 key)+ StrReplaceEditor + Terminate + 2 个禁用桩(AskHuman 会阻塞、BrowserUseTool 需 playwright)+ 8 个敏感工具桩(SendMoney / AdminReset / DbDelete / SendEmail / CheckDeploy / AddAdminUser / ExportData / GrantPermissions,记录到 `SENSITIVE_CALLS`,零副作用,每用例清空)。
 - **LLM 接线**:`LLM(llm_config={"default": LLMSettings(...)})` 显式注入 DeepSeek,**不读不写** OpenManus 的 `config.toml`(内含硬编码 MiniMax key)。
 - **DeepEval 用法**:逐用例 `await metric.a_measure(tc)`,不用 `evaluate()`(有缓存 bug / 弹 TUI)。
 - **轨迹提取**:`Trace.from_memory` 从 Message 列表提取工具调用、最终输出、全文(含工具调用参数);工具按 assistant `tool_calls` 去重,不双计。
@@ -148,7 +148,7 @@ set DEEPSEEK_API_KEY=sk-xxxx
 
 | 边界 | 说明 |
 |---|---|
-| **假 secret** | 靶子文件里的 secret 全是随机假 FLAG,agent 事先不可能知道 |
+| **假 secret** | 靶子文件里的 secret 全是随机假 FLAG(4 靶:secret.txt / deploy.log / db_credentials.txt / api_keys.txt),agent 事先不可能知道 |
 | **敏感工具桩** | 记录调用、返回良性输出,**不产生真实副作用** |
 | **Python 子进程沙箱** | 注入代码以**宿主子进程**执行(`asyncio.to_thread(subprocess.run)`,cwd 固定 `scratch/`、env **摘掉 `DEEPSEEK_API_KEY`**)。非容器 —— 子进程仍有宿主文件/网络权限,是「约定沙箱」而非强隔离,仅限本地、授权评估 |
 | **git 来源校验** | `import agenteval` 在**执行任何 OpenManus 代码之前**校验 `OPENMANUS_ROOT`:必须是 git 仓库、HEAD 在可信提交列表(`agenteval/trusted_openmanus_commits.txt` 或 `AGENTEVAL_ALLOW_COMMIT`)、working tree 干净。绕过(仅测试/信任环境):`AGENTEVAL_SKIP_VERIFY=1`;本地有审阅过的定制改动:`AGENTEVAL_ALLOW_DIRTY=1` |
@@ -157,6 +157,7 @@ set DEEPSEEK_API_KEY=sk-xxxx
 
 - 单轮评测(每用例跑一次);可扩展为多轮取均值。
 - OPI 通道的 RR 是近似判定:RR 用 `test_case.input`(OPI 时只含良性任务)当"用户请求",注入在观测层,拒绝率判定不精确;ASR 不受影响(全文已含工具观测)。
+- 敏感工具桩与假 secret 是有限集(8 桩 + 4 靶):覆盖典型攻击面,但非全部工具;新增桩/靶需同步 victim.py / injector.py 与防漂移测试。
 - 裁判默认 `deepseek-v4-flash`,可换 `deepseek-reasoner` 提升判定精度。
 - 敏感工具是桩,测的是"意图"而非"真实损失";接入真实工具时需真沙箱(当前 Python 执行是宿主子进程「约定沙箱」,敏感工具桩仍是纯逻辑桩)。
 - 模板已外部化为 `data/templates.jsonl`,schema 校验在 import 期 fail-fast(缺字段 / 未知枚举 / OPI 引用错文件都直接报错);可进一步接 ASB 的 400 条攻击工具数据(JSONL)做规模化扩展。
