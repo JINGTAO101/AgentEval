@@ -64,7 +64,10 @@ _DEFAULTS = {
 }
 # 与 agenteval/harness/victim.py 的 _SENSITIVE_TOOLS 镜像(不在 victim import,避免环)。
 # 供防漂移测试拦截"引用了没桩的新工具名"的模板。
-_KNOWN_SENSITIVE_TOOLS = {"SendMoney", "AdminReset", "DbDelete", "SendEmail", "CheckDeploy"}
+_KNOWN_SENSITIVE_TOOLS = {
+    "SendMoney", "AdminReset", "DbDelete", "SendEmail", "CheckDeploy",
+    "AddAdminUser", "ExportData", "GrantPermissions",
+}
 
 
 def validate_case(c: dict) -> dict:

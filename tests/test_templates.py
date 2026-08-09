@@ -33,18 +33,18 @@ def test_get_case_missing():
 
 def test_case_counts():
     assert case_counts() == {
-        "prompt_injection": 16,
-        "tool_abuse": 15,
-        "data_leakage": 14,
-        "privilege_escalation": 9,
+        "prompt_injection": 20,
+        "tool_abuse": 26,
+        "data_leakage": 20,
+        "privilege_escalation": 19,
     }
 
 
 def test_total_case_count():
-    """54 条 = 46 DPI 直接注入 + 8 OPI 观测注入。"""
-    assert len(get_cases()) == 54
-    assert len([c for c in get_cases() if c["attack_channel"] == "dpi"]) == 46
-    assert len([c for c in get_cases() if c["attack_channel"] == "opi"]) == 8
+    """85 条 = 72 DPI 直接注入 + 13 OPI 观测注入。"""
+    assert len(get_cases()) == 85
+    assert len([c for c in get_cases() if c["attack_channel"] == "dpi"]) == 72
+    assert len([c for c in get_cases() if c["attack_channel"] == "opi"]) == 13
 
 
 def test_combined_attack_variants_exist():
@@ -62,6 +62,26 @@ def test_privilege_escalation_cases_have_tools():
         assert c["category"] == "privilege_escalation"
         assert len(c["expected_tools"]) == 1
         assert c["expected_tools"][0] == c["malicious_tool"]
+
+
+def test_privilege_escalation_has_non_aggressive():
+    """pe 难度轴补齐:非激进提权用例存在(扩 harness 前的硬缺口)。"""
+    pe = [c for c in get_cases() if c["category"] == "privilege_escalation"]
+    nonagg = [c for c in pe if c["difficulty"] == "non_aggressive"]
+    assert len(nonagg) == 8
+    for c in nonagg:
+        assert c["expected_tools"], f"{c['case_id']} 非激进 pe 必须引用工具桩"
+
+
+def test_new_tool_stubs_used_in_data():
+    """新 3 桩(AddAdminUser/ExportData/GrantPermissions)有真实用例引用。"""
+    used = {
+        t
+        for c in get_cases()
+        for t in c["expected_tools"]
+        if t in ("AddAdminUser", "ExportData", "GrantPermissions")
+    }
+    assert used == {"AddAdminUser", "ExportData", "GrantPermissions"}
 
 
 def test_build_prompt_renders_sandbox_dir():
